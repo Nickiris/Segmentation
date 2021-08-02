@@ -56,41 +56,41 @@ class VOCSegmentation(Dataset):
     def __len__(self):
         return len(self.img_sets)
 
-if __name__ == "__main__":
-    base_path = r"C:\Users\12112\iPython\Jupyter\Deep Learning\data\Pascal VOC 2012\train"
-    img_path = os.path.join(base_path, "JPEGImages")
-    mask_path = os.path.join(base_path, "SegmentationClass")
-    img_sets = os.path.join(base_path, "ImageSets/Segmentation/val.txt")
-    with open(img_sets,'r') as f:
-        img_sets = f.read().split('\n')
-    # ToTensor() convert shape(H, W, C) array to shape(C, H, W) tensor,and divided 255.
-    transform = transforms.Compose([transforms.ToTensor(),# PIL or ndarray
-                                    transforms.CenterCrop((256, 256)),  # tensor
-                                    transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-                                    ])
-    classes__ = ['background', 'aeroplane', 'bicycle', 'bird', 'boat',
-                 'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable',
-                 'dog', 'horse', 'motorbike', 'person', 'potted plant',
-                 'sheep', 'sofa', 'train', 'monitor']
-    color_maps = [[0, 0, 0], [128, 0, 0], [0, 128, 0], [128, 128, 0], [0, 0, 128],
-     [128, 0, 128], [0, 128, 128], [128, 128, 128], [64, 0, 0], [192, 0, 0],
-     [64, 128, 0], [192, 128, 0], [64, 0, 128], [192, 0, 128],
-     [64, 128, 128], [192, 128, 128], [0, 64, 0], [128, 64, 0],
-     [0, 192, 0], [128, 192, 0], [0, 64, 128]]
-    cm2lbl = makecmap(color_maps, (3,256, 256))
-    dataset = VOCSegmentation(img_path, mask_path, img_sets, cm2lbl,transform)
-    dataloader = DataLoader(dataset,
-                            shuffle=True,
-                            batch_size=4)
-    imgs = []
-    labels = []
-    for i, data in enumerate(dataloader):
-        print(data[0].shape)
-        print(data[1].shape)
-        break
-    out = torch.rand(4, 5, 256, 256)
-    # num_classes的大小不会小于label中的最大值
-    print(F.cross_entropy(out, label))
+# if __name__ == "__main__":
+#     base_path = r"C:\Users\12112\iPython\Jupyter\Deep Learning\data\Pascal VOC 2012\train"
+#     img_path = os.path.join(base_path, "JPEGImages")
+#     mask_path = os.path.join(base_path, "SegmentationClass")
+#     img_sets = os.path.join(base_path, "ImageSets/Segmentation/val.txt")
+#     with open(img_sets,'r') as f:
+#         img_sets = f.read().split('\n')
+#     # ToTensor() convert shape(H, W, C) array to shape(C, H, W) tensor,and divided 255.
+#     transform = transforms.Compose([transforms.ToTensor(),# PIL or ndarray
+#                                     transforms.CenterCrop((256, 256)),  # tensor
+#                                     transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+#                                     ])
+#     classes__ = ['background', 'aeroplane', 'bicycle', 'bird', 'boat',
+#                  'bottle', 'bus', 'car', 'cat', 'chair', 'cow', 'diningtable',
+#                  'dog', 'horse', 'motorbike', 'person', 'potted plant',
+#                  'sheep', 'sofa', 'train', 'monitor']
+#     color_maps = [[0, 0, 0], [128, 0, 0], [0, 128, 0], [128, 128, 0], [0, 0, 128],
+#      [128, 0, 128], [0, 128, 128], [128, 128, 128], [64, 0, 0], [192, 0, 0],
+#      [64, 128, 0], [192, 128, 0], [64, 0, 128], [192, 0, 128],
+#      [64, 128, 128], [192, 128, 128], [0, 64, 0], [128, 64, 0],
+#      [0, 192, 0], [128, 192, 0], [0, 64, 128]]
+#     cm2lbl = makecmap(color_maps, (3,256, 256))
+#     dataset = VOCSegmentation(img_path, mask_path, img_sets, cm2lbl,transform)
+#     dataloader = DataLoader(dataset,
+#                             shuffle=True,
+#                             batch_size=4)
+#     imgs = []
+#     labels = []
+#     for i, data in enumerate(dataloader):
+#         print(data[0].shape)
+#         print(data[1].shape)
+#         break
+#     out = torch.rand(4, 5, 256, 256)
+#     # num_classes的大小不会小于label中的最大值
+#     print(F.cross_entropy(out, label))
 
 
 
