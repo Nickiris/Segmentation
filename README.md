@@ -1,2 +1,2 @@
-# segmentation
-Semantic Segmentation
+# semantic segmentation
+Semantic Segmentation with Pytorch
