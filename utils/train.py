@@ -79,11 +79,17 @@ def main():
 
     train_dataloader = DataLoader(train_data,
                              shuffle=True,
-                             batch_size=4)
+                             batch_size=16)
     val_dataloader = DataLoader(val_data,
                                 shuffle=True,
-                                batch_size=4)
-
+                                batch_size=16)
+    i = 0
+    for x, y in train_dataloader:
+        pred = model(x)[0]
+        print(mean_pixel_accuarcy(pred, y))
+        print(mean_iou(pred, y))
+        print(frequency_weighted_iou(pred, y))
+        break
     # pix tensor(349.7634)
     # mean pix tensor(21.6136)
     # iou tensor(6.5387)
