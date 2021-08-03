@@ -1,5 +1,5 @@
 import torch
-
+import torch.nn.functional as  F
 def label2image(labels):
     pass
 
@@ -21,9 +21,11 @@ if __name__ == '__main__':
     #     [[8,0,2],[0,9,1],[0,6,13]]
     # ]])
     m = torch.tensor([
-        [[1,2,3],[4,0,6],[0,8,9]],
-        [[0,0,0],[0,2,0],[0,7,12]],
+        [[0.2,3,3],[4.,0,6],[0.,8,4]],
+        [[0.3,4,5],[6.,1,3],[10.,1,3]],
+        [[0.5,3,2],[0.,9,1],[0.,1,3]],
     ])
-    c = m[0]
-    print(c)
-    print(torch.sum(c[1,:]))
+    print(m.shape)
+    c = F.softmax(m,dim=0)
+    print(sum([c[0,0,2],c[1,0,2],c[2,0,2]]))
+    print(torch.argmax(c, dim=0))

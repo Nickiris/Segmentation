@@ -2,10 +2,10 @@ import os
 import torch
 import torchvision
 from models.fcn import FCN8s
-import torch.nn as nn
 from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
-from data.pascal_voc import collate_fn, makecmap, VOCSegmentation
+from data.pascal_voc import makecmap, VOCSegmentation
+from utils.metrics import pixel_accuracy, mean_pixel_accuarcy, mean_iou, iou, frequency_weighted_iou
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -84,17 +84,29 @@ def main():
                                 shuffle=True,
                                 batch_size=4)
 
-    loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-4, momentum=0.9, weight_decay=5e-4)
-    epochs = 2
-    for t in range(epochs):
-        print(f"Epoch {t + 1}\n-------------------------------")
-        train(train_dataloader, model, loss_fn, optimizer)
-        test(val_dataloader, model, loss_fn)
-    print("Done!")
-    torch.save(model.state_dict(), "model.pth")
-    print("Saved PyTorch Model State to model.pth")
+    # pix tensor(349.7634)
+    # mean pix tensor(21.6136)
+    # iou tensor(6.5387)
+    # mean iou tensor(19.2851)
+    # frequency weighted iou
+    # tensor(83.2737)
+
+    # loss_fn = nn.CrossEntropyLoss()
+    # optimizer = torch.optim.SGD(model.parameters(), lr=1e-4, momentum=0.9, weight_decay=5e-4)
+    # epochs = 2
+    # for t in range(epochs):
+    #     print(f"Epoch {t + 1}\n-------------------------------")
+    #     train(train_dataloader, model, loss_fn, optimizer)
+    #     test(val_dataloader, model, loss_fn)
+    # print("Done!")
+    # torch.save(model.state_dict(), "model.pth")
+    # print("Saved PyTorch Model State to model.pth")
 
 
 if __name__ == '__main__':
-    print('game over')
+    # m = torch.rand((7,7))
+    # m[0, 0]  += 1
+    # print(m)
+    # print(torch.sum(m[0,:]))
+    # print(sum([1.9462, 0.0161, 0.5009, 0.3033, 0.5594, 0.6062, 0.5228]))
+     main()
