@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-import numpy as np
 
 """
     We can build a confusion matrix to calculate the metric result of one data. 
