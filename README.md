@@ -1,2 +1,2 @@
 # semantic segmentation
-Semantic Segmentation with Pytorch
+Semantic Segmentation networks implemented by Pytorch.
