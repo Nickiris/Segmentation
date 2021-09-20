@@ -58,6 +58,7 @@ RefineNet:
 
 class ResidualConvUnit(nn.Module):
     # The block mainly fine-tunes the pre-trained ResNet weight.
+
     def __init__(self, channels, features):
         super(ResidualConvUnit, self).__init__()
 
@@ -68,7 +69,6 @@ class ResidualConvUnit(nn.Module):
         self.downsample = None
         if channels != features:
             self.downsample = conv1x1(channels, features)
-
 
     def forward(self, x):
         identity = x
@@ -214,7 +214,7 @@ class RefineNet(nn.Module):
 
         # four cascaded RefineNet
         # adaptive_convs
-        self.adaptive_conv1 = self._make_adaptive_conv(features,features)
+        self.adaptive_conv1 = self._make_adaptive_conv(256,  features)
         self.adaptive_conv2 = self._make_adaptive_conv(512,  features)
         self.adaptive_conv3 = self._make_adaptive_conv(1024, features)
         self.adaptive_conv4 = self._make_adaptive_conv(2048, features * 2)
@@ -225,12 +225,13 @@ class RefineNet(nn.Module):
         self.conv3x3_2_2 = conv3x3(features, features)
         self.conv3x3_3_1 = conv3x3(features, features)
         self.conv3x3_3_2 = conv3x3(features, features)
+        # channels: 512 --> 256
         self.conv3x3_4 = conv3x3(features * 2, features)
 
         self.chainedresidualpool1 = ChainedResidualPool(features, features)
         self.chainedresidualpool2 = ChainedResidualPool(features, features)
         self.chainedresidualpool3 = ChainedResidualPool(features, features)
-        self.chainedresidualpool4 = ChainedResidualPool(features * 2, features)
+        self.chainedresidualpool4 = ChainedResidualPool(features * 2, features * 2)
 
         # RefineNet-1 has two ResidualConvUnit
         self.outputconv1 = self._make_adaptive_conv(features, features)
