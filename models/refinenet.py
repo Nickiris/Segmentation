@@ -115,7 +115,8 @@ class ChainedResidualPool(nn.Module):
 
 # todo There are some problems.
 class MultiResolutionFusion(nn.Module):
-
+    # All path inputs are then fused into a high-resolution feature map
+    # by the multi-resolution fusion block.
     def __init__(self, channels, features, bottum):
         super(MultiResolutionFusion, self).__init__()
         # Convolutions apply for input adaption.
@@ -206,20 +207,53 @@ class RefineNet(nn.Module):
         self.layer3 = self._make_layer(block, 256, block_nums[2], norm_layer, stride=2)
         self.layer4 = self._make_layer(block, 512, block_nums[3], norm_layer, stride=2)
 
-        self.refinenet1 = RefineNetBlock(256,  features, out_nums=2)
-        self.refinenet2 = RefineNetBlock(512,  features)
-        self.refinenet3 = RefineNetBlock(1024, features)
-        self.refinenet4 = RefineNetBlock(2048, features * 2, bottum=True)
+        # self.refinenet1 = RefineNetBlock(256,  features, out_nums=2)
+        # self.refinenet2 = RefineNetBlock(512,  features)
+        # self.refinenet3 = RefineNetBlock(1024, features)
+        # self.refinenet4 = RefineNetBlock(2048, features * 2, bottum=True)
 
-        self.outconv = conv1x1(256, num_classes)
+        # four cascaded RefineNet
+        # adaptive_convs
+        self.adaptive_conv1 = self._make_adaptive_conv(features,features)
+        self.adaptive_conv2 = self._make_adaptive_conv(512,  features)
+        self.adaptive_conv3 = self._make_adaptive_conv(1024, features)
+        self.adaptive_conv4 = self._make_adaptive_conv(2048, features * 2)
+
+        # Convolutions before Fusion block
+        self.conv3x3_1 = conv3x3(features, features)
+        self.conv3x3_2_1 = conv3x3(features, features)
+        self.conv3x3_2_2 = conv3x3(features, features)
+        self.conv3x3_3_1 = conv3x3(features, features)
+        self.conv3x3_3_2 = conv3x3(features, features)
+        self.conv3x3_4 = conv3x3(features * 2, features)
+
+        self.chainedresidualpool1 = ChainedResidualPool(features, features)
+        self.chainedresidualpool2 = ChainedResidualPool(features, features)
+        self.chainedresidualpool3 = ChainedResidualPool(features, features)
+        self.chainedresidualpool4 = ChainedResidualPool(features * 2, features)
+
+        # RefineNet-1 has two ResidualConvUnit
+        self.outputconv1 = self._make_adaptive_conv(features, features)
+        self.outputconv2 = ResidualConvUnit(features, features)
+        self.outputconv3 = ResidualConvUnit(features, features)
+        self.outputconv4 = ResidualConvUnit(features * 2, features * 2)
+
+        self.outputconv = conv1x1(features, num_classes)
 
 
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+        # for m in self.modules():
+        #     if isinstance(m, nn.Conv2d):
+        #         nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        #     elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+        #         nn.init.constant_(m.weight, 1)
+        #         nn.init.constant_(m.bias, 0)
+
+    def _make_adaptive_conv(self, channels, out_channels):
+        layers = nn.Sequential(
+            ResidualConvUnit(channels, out_channels),
+            ResidualConvUnit(out_channels, out_channels),
+        )
+        return layers
 
 
     def _make_layer(self, block, channels, block_nums, norm_layer, stride=1, dilation=1):
@@ -256,16 +290,52 @@ class RefineNet(nn.Module):
         x3 = self.layer3(x2)
         x4 = self.layer4(x3)
 
-        x4 = self.refinenet4(x4)
-        x3 = self.refinenet3(x3, x4)
-        x2 = self.refinenet2(x2, x3)
-        x1 = self.refinenet1(x1, x2)
+        # x4 = self.refinenet4(x4)
+        # x3 = self.refinenet3(x3, x4)
+        # x2 = self.refinenet2(x2, x3)
+        # x1 = self.refinenet1(x1, x2)
 
-        x = self.outconv(x1)
-        x = F.interpolate(x, size=input_size, mode='bilinear', align_corners=True)
+        # RefineNet-4 directly go through the MultiResidualFusion block
+        x4 = self.adaptive_conv4(x4)
+        x4 = self.chainedresidualpool4(x4)
+        x4 = self.outputconv4(x4)
+        # channels: 512 --> 256
+        # the Convolutions also re-scale the feature values appropriately along different paths
+        # before Fusion Block on RefineNet-3
+        x4 = self.conv3x3_4(x4)
+        x4 = F.interpolate(x4, size=x3.size()[-2:], mode='bilinear', align_corners=True)
 
-        return x
+        x3 = self.adaptive_conv3(x3)
+        x3 = self.conv3x3_3_1(x3)
+        x3 += x4
+        x3 = self.chainedresidualpool3(x3)
+        x3 = self.outputconv3(x3)
+        # before Fusion Block on RefineNet-2
+        x3 = self.conv3x3_3_2(x3)
+        x3 = F.interpolate(x3, size=x2.size()[-2:], mode='bilinear', align_corners=True)
 
+        x2 = self.adaptive_conv2(x2)
+        x2 = self.conv3x3_2_1(x2)
+
+        x2 += x3
+        x2 = self.chainedresidualpool2(x2)
+        x2 = self.outputconv2(x2)
+        # before Fusion Block on RefineNet-1
+        x2 = self.conv3x3_2_2(x2)
+        x2 = F.interpolate(x2, size=x1.size()[-2:], mode='bilinear', align_corners=True)
+
+        x1 = self.adaptive_conv1(x1)
+        x1 = self.conv3x3_1(x1)
+        x1 += x2
+        x1 = self.chainedresidualpool1(x1)
+        x1 = self.outputconv1(x1)
+
+        # channels 256 --> num_classes
+        out = self.outputconv(x1)
+        # up-sample the 1/4 size of image resolution to full image resolution
+        out = F.interpolate(out, size=input_size, mode='bilinear', align_corners=True)
+
+        return out
 
 
 if __name__ == '__main__':
