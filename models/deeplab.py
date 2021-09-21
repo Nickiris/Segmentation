@@ -11,6 +11,7 @@ DeepLabv1
         SGD-Momentum, momentum: 0.9, weight decay: 0.0005, loss function is cross entropy 
         mini-batch: 20, initial learning rate: 0.001, 0.1 for the final classifier layer, multiplying the learning rate by 0.1 at every
     2000 iterations.
+    
     Others:
         损失函数：交叉熵之和。
         训练数据label：对原始Ground Truth进行下采样8倍，得到训练label。
@@ -287,6 +288,7 @@ class DeepLabv2(nn.Module):
 
 
     def forward(self, x):
+
         x = self.conv1(x)
         x = self.norm_layer1(x)
         x = self.relu(x)
@@ -303,40 +305,221 @@ class DeepLabv2(nn.Module):
 
 
 
+"""
+DeepLabv3
+    Challenges:
+
+        (1)the reduced feature resolution caused by consecutive pooling operations of convolution 
+    striding may impede dense prediction tasks due to invariance to local image transformation.
+        (2)the existence of objects at multiple scales.
+        (3)atrous rate becomes larger, the weights that are applied to valid feature region become smaller. 
+
+    Schemes:
+
+        (1)advocate the use of atrous convolution.
+
+        (2)apply an image pyramid to extract features from each scale input,that is multi-scale input.
+        (3)encoder-decoder structure exploits multi-scale features from the encoder and recovers the
+    spital resolution from decoder.
+        (4)extra modules are cascaded on the top of network,i.e. DenseCRF, extra convolutional layers for
+    capturing long range information(context).
+        (5)spatial pyramid pooling.
+
+        (6)apply atrous spatial pyramid pooling with global average pooling
+
+    Architectures:
+
+        (1)propose to augment ASPP with image-level features.
+        (2)employ a hierarchy of grids of different sizes,output_stride means the ratio of 
+    input resolution to output resolution,Multi_Grid = (r1, r2, r3) for three convolutional layers within
+    block4 to block7, the three convolutional layers rates = 2 * (r1, r2, r3)
+
+        (3)apply poly learning rate policy with power=0.9,batch_size is equal to the output_stride(16).
+        (4)training on the trainaug set with 30k iterations and learning rate is 0.007,then freeze batch
+    normallization parameters, employ output_stride=8 and training on the trainval set with another 30k 
+    iterations and smaller base learning rate=0.001.
+        (5)data augmentation applies randomly scaling the input images (from 0.5 to 2.0) and randomly 
+    left-right flipping during training.
+
+    Improvements:
+
+        (1)
+
+    Results:
+
+        (1)attains a mIoU score of 85.7% on the PASCAL VOC 2012 test without DenseCRF post-processing.
+
+"""
+
 
 class ASPP(nn.Module):
-    def __init__(self, num_classes):
-        pass
+    def __init__(self, num_classes, features, rates):
+        super(ASPP, self).__init__()
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.conv1x1_1 = self._make_layer(features, kernel_size=1)
+        self.conv3x3_1 = self._make_layer(features, kernel_size=3, dilation=rates[0],
+                                          padding=rates[0])
+        self.conv3x3_2 = self._make_layer(features, kernel_size=3, dilation=rates[1],
+                                          padding=rates[1])
+        self.conv3x3_3 = self._make_layer(features, kernel_size=3, dilation=rates[2],
+                                          padding=rates[2])
+
+        self.conv1x1_2 = self._make_layer(features, kernel_size=1)
+        self.conv1x1_3 = self._make_layer(256 * 5, kernel_size=1)
+        self.output = nn.Conv2d(256, num_classes, kernel_size=(1, 1), bias=False)
+
+
+    def _make_layer(self, features, kernel_size, dilation=1, padding=0, bias=False):
+        layers = nn.Sequential(
+            nn.Conv2d(features, 256, kernel_size=(kernel_size, kernel_size), padding=padding,
+                      dilation=(dilation, dilation), bias=bias),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+        )
+        return layers
+
 
     def forward(self, x):
-        pass
+        input_size = x.size()[-2:]
+
+        out1 = self.conv1x1_1(x)
+        out2 = self.conv3x3_1(x)
+        out3 = self.conv3x3_2(x)
+        out4 = self.conv3x3_3(x)
+
+        img_pool = self.avgpool(x)
+        img_pool = self.conv1x1_2(img_pool)
+        img_pool = F.interpolate(img_pool, size=input_size, mode='bilinear',
+                                 align_corners=True)
+
+        out = torch.cat([out1, out2, out3, out4, img_pool], dim=1)
+        out = self.conv1x1_3(out)
+
+        out = self.output(out)
+
+        return out
 
 
 class DeepLabv3(nn.Module):
 
-    def __init__(self, num_classes, num_layers, rates):
+    in_channels = 64
+    dilation = 1
+
+    def __init__(self,
+                 num_classes,
+                 block,
+                 norm_layer,
+                 block_nums,
+                 rates,
+                 multi_grid,
+                 output_stride=16,
+                 freeze_bn=False):
         super(DeepLabv3, self).__init__()
-        pass
+
+        self.conv1 = nn.Conv2d(3, self.in_channels, kernel_size=(7, 7), padding=3,
+                               stride=(2, 2), bias=False)
+        self.bn1 = norm_layer(self.in_channels)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, padding=1, stride=2)
+
+        strides = None
+        dilations = None
+        if output_stride == 16:
+            strides = (1, 2, 2, 1)
+            dilations = (1, 1, 1, 2)
+        elif output_stride == 8:
+            strides = (1, 2, 1, 1)
+            dilations = (1, 1, 2, 4)
+
+        self.layer1 = self._make_layer(block, 64,  block_nums=block_nums[0], norm_layer=norm_layer,
+                                       stride=strides[0], dilation=dilations[0])
+        self.layer2 = self._make_layer(block, 128, block_nums=block_nums[1], norm_layer=norm_layer,
+                                       stride=strides[1], dilation=dilations[1])
+        self.layer3 = self._make_layer(block, 256, block_nums=block_nums[2], norm_layer=norm_layer,
+                                       stride=strides[2], dilation=dilations[2])
+        self.layer4 = self._make_layer(block, 512, block_nums=block_nums[3], norm_layer=norm_layer,
+                                       stride=strides[3], dilation=dilations[3])
+        self.layer5 = self._make_layer(block, 512, block_nums=multi_grid[0], norm_layer=norm_layer,
+                                       dilation=2 * multi_grid[0])
+        self.layer6 = self._make_layer(block, 512, block_nums=multi_grid[1], norm_layer=norm_layer,
+                                       dilation=2 * multi_grid[1])
+        self.layer7 = self._make_layer(block, 512, block_nums=multi_grid[2], norm_layer=norm_layer,
+                                       dilation=2 * multi_grid[2])
+
+
+        self.aspp = ASPP(num_classes=num_classes, features=2048, rates=rates)
+
+        if freeze_bn is not False:
+            for m in self.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.eval()
+
+    def _make_layer(self, block, channels, block_nums, norm_layer, stride=1, dilation=1):
+        downsample = None
+        previous_dilation = self.dilation
+        self.dilation = dilation
+
+        if stride != 1 or self.in_channels != block.expansion * channels:
+            downsample = nn.Sequential(
+                nn.Conv2d(self.in_channels, block.expansion * channels, kernel_size=(1, 1),
+                          stride=(stride, stride), bias=False),
+                norm_layer(block.expansion * channels),
+            )
+
+        layers = []
+        layers.append(block(self.in_channels, channels, dilation=previous_dilation,
+                            stride=stride, norm_layer=norm_layer, downsample=downsample))
+        self.in_channels = block.expansion * channels
+        for _ in range(1, block_nums):
+            layers.append(block(self.in_channels, channels, dilation=dilation,
+                                norm_layer=norm_layer))
+
+        return nn.Sequential(*layers)
 
     def forward(self, x):
-        pass
+        inpu_size = x.size()[-2:]
+
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+        x = self.layer5(x)
+        x = self.layer6(x)
+        x = self.layer7(x)
+
+        x = self.aspp(x)
+        x = F.interpolate(x, size=inpu_size, mode='bilinear', align_corners=True)
+
+        return x
 
 
 
 if __name__ == '__main__':
 
     import matplotlib.pyplot as plt
-    model = DeepLabv2(num_classes=21, norm_layer=nn.BatchNorm2d)
+    # model = DeepLabv2(num_classes=21, norm_layer=nn.BatchNorm2d)
+    # x = torch.rand(1, 3, 224, 224)
+    # with torch.no_grad():
+    #     y = model(x)
+    #     print(y.shape)
+    #     CRF = DenseCRF(w1=5, w2=3, alpha=140, beta=5, gamma=3, iterations=10)
+    #     # input image's dtype is uint8.
+    #     mask = CRF(x.squeeze(0).byte().numpy().transpose(1, 2, 0)[:28, :28, :], y.squeeze(0).numpy())
+    # output = np.argmax(mask, axis=0)
+
+    model = DeepLabv3(num_classes=21, norm_layer=nn.BatchNorm2d, rates=(6, 12, 18), output_stride=8,
+                      multi_grid=(1, 2, 1), block=Bottleneck, block_nums=(3, 4, 23, 3))
+    # when model is on training, BatchNorm2d requires more than one input image.
+    model.eval()
     x = torch.rand(1, 3, 224, 224)
-    with torch.no_grad():
-        y = model(x)
-        print(y.shape)
-        CRF = DenseCRF(w1=5, w2=3, alpha=140, beta=5, gamma=3, iterations=10)
-        # input image's dtype is uint8.
-        mask = CRF(x.squeeze(0).byte().numpy().transpose(1, 2, 0)[:28, :28, :], y.squeeze(0).numpy())
-    output = np.argmax(mask, axis=0)
-    print(output.shape)
-    plt.imshow(output)
+    y = model(x)
+    output = torch.argmax(y, dim=1)
+    plt.imshow(output.squeeze(0))
     plt.show()
 
         
