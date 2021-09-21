@@ -57,7 +57,12 @@ RefineNet:
 
 
 class ResidualConvUnit(nn.Module):
-    # The block mainly fine-tunes the pre-trained ResNet weight.
+    """
+        The filter number for each input path is set to 512 for RefineNet-4 and 256 for the
+    remaining ones in our experiments.
+        The block mainly fine-tunes the pre-trained ResNet weight.
+    """
+
 
     def __init__(self, channels, features):
         super(ResidualConvUnit, self).__init__()
@@ -66,9 +71,7 @@ class ResidualConvUnit(nn.Module):
         self.conv2 = conv3x3(features, features)
 
         self.relu = nn.ReLU(inplace=True)
-        self.downsample = None
-        if channels != features:
-            self.downsample = conv1x1(channels, features)
+        self.downsample = conv1x1(channels, features)
 
     def forward(self, x):
         identity = x
@@ -79,18 +82,21 @@ class ResidualConvUnit(nn.Module):
         x = self.relu(x)
         x = self.conv2(x)
 
-        if self.downsample is not None:
-            identity = self.downsample(identity)
+        identity = self.downsample(identity)
 
         x += identity
 
         return x
 
 
-
+# The block only has two parameters, out_channels == in_channels.
 class ChainedResidualPool(nn.Module):
-    # The proposed chained residual pooling aims to capture background context from a large
-    # image region.
+
+    """
+        The proposed chained residual pooling aims to capture background context from a large
+    image region.
+        The block aims to capture background context from a large region.
+    """
     def __init__(self, features, block_nums):
         super(ChainedResidualPool, self).__init__()
 
@@ -228,10 +234,10 @@ class RefineNet(nn.Module):
         # channels: 512 --> 256
         self.conv3x3_4 = conv3x3(features * 2, features)
 
-        self.chainedresidualpool1 = ChainedResidualPool(features, features)
-        self.chainedresidualpool2 = ChainedResidualPool(features, features)
-        self.chainedresidualpool3 = ChainedResidualPool(features, features)
-        self.chainedresidualpool4 = ChainedResidualPool(features * 2, features * 2)
+        self.chainedresidualpool1 = ChainedResidualPool(features, block_nums=3)
+        self.chainedresidualpool2 = ChainedResidualPool(features, block_nums=3)
+        self.chainedresidualpool3 = ChainedResidualPool(features, block_nums=3)
+        self.chainedresidualpool4 = ChainedResidualPool(features * 2, block_nums=3)
 
         # RefineNet-1 has two ResidualConvUnit
         self.outputconv1 = self._make_adaptive_conv(features, features)
